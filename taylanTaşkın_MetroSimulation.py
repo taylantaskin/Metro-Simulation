@@ -1,30 +1,18 @@
 from collections import defaultdict, deque
 import heapq
-from typing import Dict, List, Tuple, Optional
 
 
 # A metro station with name, line and connections
 class Station:
-    def __init__(self, idx: str, name: str, line: str):
+    def __init__(self, idx, name, line):
         self.idx = idx  # Unique ID for the station
         self.name = name  # Name of the station
         self.line = line  # Line the station belongs to
         self.neighbors = []  # Connected stations and travel times
 
     # Add a connection to another station
-    def add_neighbor(self, station: 'Station', time: int):
+    def add_neighbor(self, station, time):
         self.neighbors.append((station, time))
-
-    def __eq__(self, other):
-        if not isinstance(other, Station):
-            return False
-        return self.idx == other.idx
-
-    def __hash__(self):
-        return hash(self.idx)
-
-    def __repr__(self):
-        return f"{self.name} ({self.line})"
 
 
 # Metro network with stations and connections
@@ -34,21 +22,20 @@ class MetroNetwork:
         self.lines = defaultdict(list)  # Maps line names to stations
 
     # Add a new station to the network
-    def add_station(self, idx: str, name: str, line: str) -> None:
-        if idx not in self.stations:
-            station = Station(idx, name, line)
-            self.stations[idx] = station
-            self.lines[line].append(station)
+    def add_station(self, idx, name, line):
+        station = Station(idx, name, line)
+        self.stations[idx] = station
+        self.lines[line].append(station)
 
     # Connect two stations with travel time
-    def add_connection(self, station1_id: str, station2_id: str, time: int) -> None:
+    def add_connection(self, station1_id, station2_id, time):
         station1 = self.stations[station1_id]
         station2 = self.stations[station2_id]
         station1.add_neighbor(station2, time)
         station2.add_neighbor(station1, time)
 
     # Find route with minimum transfers
-    def find_min_transfer_route(self, start_id: str, target_id: str) -> Optional[List[Station]]:
+    def find_min_transfer_route(self, start_id, target_id):
         start = self.stations[start_id]
         target = self.stations[target_id]
 
@@ -58,7 +45,7 @@ class MetroNetwork:
         while queue:
             current, path, current_line = queue.popleft()
 
-            if current == target:
+            if current.idx == target.idx:  # Manuel karşılaştırma
                 return self._clean_path(path)
 
             if (current.idx, current_line) in visited:
@@ -74,19 +61,26 @@ class MetroNetwork:
                         new_path.append(neighbor)
                     queue.append((neighbor, new_path, neighbor.line))
                 else:
-                    if neighbor not in path:
+                    # Check if neighbor is already in path
+                    in_path = False
+                    for station in path:
+                        if station.idx == neighbor.idx:
+                            in_path = True
+                            break
+
+                    if not in_path:
                         new_path.append(neighbor)
                         queue.append((neighbor, new_path, current_line))
 
         return None
 
     # Find fastest route considering transfer times
-    def find_fastest_route(self, start_id: str, target_id: str) -> Optional[Tuple[List[Station], int]]:
+    def find_fastest_route(self, start_id, target_id):
         start = self.stations[start_id]
         target = self.stations[target_id]
 
         # Transfer penalty in minutes
-        def heuristic(station: Station, target: Station) -> int:
+        def heuristic(station, target):
             return 0 if station.line == target.line else 5
 
         counter = 0
@@ -96,7 +90,7 @@ class MetroNetwork:
         while queue:
             _, _, current_time, current, path, current_line = heapq.heappop(queue)
 
-            if current == target:
+            if current.idx == target.idx:  # Manuel karşılaştırma
                 return self._clean_path(path), current_time
 
             if (current.idx, current_line) in visited and visited[(current.idx, current_line)] <= current_time:
@@ -119,7 +113,14 @@ class MetroNetwork:
                          neighbor, new_path, neighbor.line)
                     )
                 else:
-                    if neighbor not in path:
+                    # Check if neighbor is already in path
+                    in_path = False
+                    for station in path:
+                        if station.idx == neighbor.idx:
+                            in_path = True
+                            break
+
+                    if not in_path:
                         new_path.append(neighbor)
                         heapq.heappush(
                             queue,
@@ -130,7 +131,7 @@ class MetroNetwork:
         return None
 
     # Remove duplicate stations from path
-    def _clean_path(self, path: List[Station]) -> List[Station]:
+    def _clean_path(self, path):
         result = []
         for i, station in enumerate(path):
             if i > 0 and station.name == path[i - 1].name:
