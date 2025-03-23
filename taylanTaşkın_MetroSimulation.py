@@ -1,42 +1,53 @@
 from collections import defaultdict, deque
 import heapq
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 
-# Represents a metro station with its identifier, name, line, and connections
+# A metro station with name, line and connections
 class Station:
     def __init__(self, idx: str, name: str, line: str):
-        self.idx = idx  # Unique identifier for the station
+        self.idx = idx  # Unique ID for the station
         self.name = name  # Name of the station
-        self.line = line  # Line that the station belongs to
-        self.neighbors: List[Tuple['Station', int]] = []  # List of connected stations and travel time
+        self.line = line  # Line the station belongs to
+        self.neighbors = []  # Connected stations and travel times
 
-    # Adds a neighboring station with travel time between them
+    # Add a connection to another station
     def add_neighbor(self, station: 'Station', time: int):
         self.neighbors.append((station, time))
 
+    def __eq__(self, other):
+        if not isinstance(other, Station):
+            return False
+        return self.idx == other.idx
 
-# Represents a metro network with stations and connections
+    def __hash__(self):
+        return hash(self.idx)
+
+    def __repr__(self):
+        return f"{self.name} ({self.line})"
+
+
+# Metro network with stations and connections
 class MetroNetwork:
     def __init__(self):
-        self.stations: Dict[str, Station] = {}  # Maps station IDs to Station objects
-        self.lines: Dict[str, List[Station]] = defaultdict(list)  # Maps line names to lists of stations
+        self.stations = {}  # Maps station IDs to Station objects
+        self.lines = defaultdict(list)  # Maps line names to stations
 
-    # Adds a new station to the network
+    # Add a new station to the network
     def add_station(self, idx: str, name: str, line: str) -> None:
         if idx not in self.stations:
             station = Station(idx, name, line)
             self.stations[idx] = station
             self.lines[line].append(station)
 
-    # Adds a bi-directional connection between two stations with given travel time
+    # Connect two stations with travel time
     def add_connection(self, station1_id: str, station2_id: str, time: int) -> None:
         station1 = self.stations[station1_id]
         station2 = self.stations[station2_id]
         station1.add_neighbor(station2, time)
         station2.add_neighbor(station1, time)
 
-    # Finds the route with minimum number of line transfers using BFS
+    # Find route with minimum transfers
     def find_min_transfer_route(self, start_id: str, target_id: str) -> Optional[List[Station]]:
         if start_id not in self.stations or target_id not in self.stations:
             return None
@@ -44,63 +55,111 @@ class MetroNetwork:
         start = self.stations[start_id]
         target = self.stations[target_id]
 
-        # Queue for BFS: stores (current_station, path_to_current_station, current_line)
+        # Store (station, path, current_line)
         queue = deque([(start, [start], start.line)])
-        visited = set()  # Set of visited stations to prevent re-processing
+        visited = set()  # Track (station.idx, line) pairs
 
         while queue:
             current, path, current_line = queue.popleft()
 
-            # If we reached the target station, return the path
             if current == target:
-                return path
+                return self._clean_path(path)
 
-            # If we have already visited this station in this line, continue to the next
-            if (current, current_line) in visited:
+            if (current.idx, current_line) in visited:
                 continue
 
-            visited.add((current, current_line))
+            visited.add((current.idx, current_line))
 
-            # Explore neighboring stations
-            for neighbor, time in current.neighbors:
-                # If the neighbor is on a different line, we count it as a transfer
+            for neighbor, _ in current.neighbors:
+                new_path = path.copy()
+
+                # Handle line transfers
                 if neighbor.line != current_line:
-                    queue.append((neighbor, path + [neighbor], neighbor.line))
+                    # Skip duplicates for same-station transfers
+                    if neighbor.name != current.name:
+                        new_path.append(neighbor)
+                    queue.append((neighbor, new_path, neighbor.line))
                 else:
-                    queue.append((neighbor, path + [neighbor], current_line))
+                    # Continue on same line
+                    if neighbor not in path:  # Avoid cycles
+                        new_path.append(neighbor)
+                        queue.append((neighbor, new_path, current_line))
 
-        return None  # No path found
+        return None
 
-    # Finds the fastest route (minimum total travel time) using A* algorithm
+    # Find fastest route considering transfer times
     def find_fastest_route(self, start_id: str, target_id: str) -> Optional[Tuple[List[Station], int]]:
-        """Finds the fastest route using A* algorithm
-
-        Complete this function:
-        1. Check if the start and target stations exist
-        2. Use A* algorithm to find the fastest route
-        3. Return None if no route is found, otherwise return (station_list, total_time) tuple
-        4. Remove the # TODO and pass lines after completing the function
-        Hints:
-        - Use heapq module to create a priority queue, HINT: pq = [(0, id(start), start, [start])]
-        - Keep track of visited stations
-        - Calculate the total time at each step
-        - Select the route with the lowest time
-        """
-        # TODO: Complete this function
-        pass
         if start_id not in self.stations or target_id not in self.stations:
             return None
 
         start = self.stations[start_id]
         target = self.stations[target_id]
-        visited = set()
+
+        # Transfer penalty in minutes
+        def heuristic(station: Station, target: Station) -> int:
+            return 0 if station.line == target.line else 5
+
+        # Priority queue: (priority, id, time, station, path, line)
+        counter = 0  # For breaking ties in priority queue
+        queue = [(heuristic(start, target), counter, 0, start, [start], start.line)]
+        visited = {}  # Best time to reach (station, line)
+
+        while queue:
+            _, _, current_time, current, path, current_line = heapq.heappop(queue)
+
+            if current == target:
+                return self._clean_path(path), current_time
+
+            # Skip if we found a faster way already
+            if (current.idx, current_line) in visited and visited[(current.idx, current_line)] <= current_time:
+                continue
+
+            visited[(current.idx, current_line)] = current_time
+
+            for neighbor, travel_time in current.neighbors:
+                new_time = current_time + travel_time
+                counter += 1
+                new_path = path.copy()
+
+                # Handle line transfers
+                if neighbor.line != current_line:
+                    # Skip duplicates for same-station transfers
+                    if neighbor.name != current.name:
+                        new_path.append(neighbor)
+
+                    heapq.heappush(
+                        queue,
+                        (new_time + heuristic(neighbor, target), counter, new_time,
+                         neighbor, new_path, neighbor.line)
+                    )
+                else:
+                    # Continue on same line
+                    if neighbor not in path:  # Avoid cycles
+                        new_path.append(neighbor)
+                        heapq.heappush(
+                            queue,
+                            (new_time + heuristic(neighbor, target), counter, new_time,
+                             neighbor, new_path, current_line)
+                        )
+
+        return None
+
+    # Remove duplicate stations from path
+    def _clean_path(self, path: List[Station]) -> List[Station]:
+        result = []
+        for i, station in enumerate(path):
+            # Skip consecutive stations with the same name
+            if i > 0 and station.name == path[i - 1].name:
+                continue
+            result.append(station)
+        return result
 
 
-# Example Usage section - demonstrates how to create and use the metro network
+# Example Usage
 if __name__ == "__main__":
     metro = MetroNetwork()
 
-    # Add stations to the network
+    # Add stations
     # Red Line stations
     metro.add_station("K1", "Kızılay", "Red Line")
     metro.add_station("K2", "Ulus", "Red Line")
@@ -119,7 +178,7 @@ if __name__ == "__main__":
     metro.add_station("T3", "Gar", "Orange Line")  # Transfer point
     metro.add_station("T4", "Keçiören", "Orange Line")
 
-    # Add connections between stations with travel times
+    # Add connections with travel times
     # Red Line connections
     metro.add_connection("K1", "K2", 4)  # Kızılay -> Ulus
     metro.add_connection("K2", "K3", 6)  # Ulus -> Demetevler
@@ -135,12 +194,12 @@ if __name__ == "__main__":
     metro.add_connection("T2", "T3", 9)  # Demetevler -> Gar
     metro.add_connection("T3", "T4", 5)  # Gar -> Keçiören
 
-    # Transfer connections (same station different lines)
+    # Transfer connections
     metro.add_connection("K1", "M2", 2)  # Kızılay transfer
     metro.add_connection("K3", "T2", 3)  # Demetevler transfer
     metro.add_connection("M4", "T3", 2)  # Gar transfer
 
-    # Test different routing scenarios
+    # Test scenarios
     print("\n=== Test Scenarios ===")
 
     # Scenario 1: From AŞTİ to OSB
