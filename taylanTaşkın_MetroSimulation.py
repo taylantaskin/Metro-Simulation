@@ -49,15 +49,11 @@ class MetroNetwork:
 
     # Find route with minimum transfers
     def find_min_transfer_route(self, start_id: str, target_id: str) -> Optional[List[Station]]:
-        if start_id not in self.stations or target_id not in self.stations:
-            return None
-
         start = self.stations[start_id]
         target = self.stations[target_id]
 
-        # Store (station, path, current_line)
         queue = deque([(start, [start], start.line)])
-        visited = set()  # Track (station.idx, line) pairs
+        visited = set()
 
         while queue:
             current, path, current_line = queue.popleft()
@@ -73,15 +69,12 @@ class MetroNetwork:
             for neighbor, _ in current.neighbors:
                 new_path = path.copy()
 
-                # Handle line transfers
                 if neighbor.line != current_line:
-                    # Skip duplicates for same-station transfers
                     if neighbor.name != current.name:
                         new_path.append(neighbor)
                     queue.append((neighbor, new_path, neighbor.line))
                 else:
-                    # Continue on same line
-                    if neighbor not in path:  # Avoid cycles
+                    if neighbor not in path:
                         new_path.append(neighbor)
                         queue.append((neighbor, new_path, current_line))
 
@@ -89,9 +82,6 @@ class MetroNetwork:
 
     # Find fastest route considering transfer times
     def find_fastest_route(self, start_id: str, target_id: str) -> Optional[Tuple[List[Station], int]]:
-        if start_id not in self.stations or target_id not in self.stations:
-            return None
-
         start = self.stations[start_id]
         target = self.stations[target_id]
 
@@ -99,10 +89,9 @@ class MetroNetwork:
         def heuristic(station: Station, target: Station) -> int:
             return 0 if station.line == target.line else 5
 
-        # Priority queue: (priority, id, time, station, path, line)
-        counter = 0  # For breaking ties in priority queue
+        counter = 0
         queue = [(heuristic(start, target), counter, 0, start, [start], start.line)]
-        visited = {}  # Best time to reach (station, line)
+        visited = {}
 
         while queue:
             _, _, current_time, current, path, current_line = heapq.heappop(queue)
@@ -110,7 +99,6 @@ class MetroNetwork:
             if current == target:
                 return self._clean_path(path), current_time
 
-            # Skip if we found a faster way already
             if (current.idx, current_line) in visited and visited[(current.idx, current_line)] <= current_time:
                 continue
 
@@ -121,9 +109,7 @@ class MetroNetwork:
                 counter += 1
                 new_path = path.copy()
 
-                # Handle line transfers
                 if neighbor.line != current_line:
-                    # Skip duplicates for same-station transfers
                     if neighbor.name != current.name:
                         new_path.append(neighbor)
 
@@ -133,8 +119,7 @@ class MetroNetwork:
                          neighbor, new_path, neighbor.line)
                     )
                 else:
-                    # Continue on same line
-                    if neighbor not in path:  # Avoid cycles
+                    if neighbor not in path:
                         new_path.append(neighbor)
                         heapq.heappush(
                             queue,
@@ -148,12 +133,10 @@ class MetroNetwork:
     def _clean_path(self, path: List[Station]) -> List[Station]:
         result = []
         for i, station in enumerate(path):
-            # Skip consecutive stations with the same name
             if i > 0 and station.name == path[i - 1].name:
                 continue
             result.append(station)
         return result
-
 
 # Example Usage
 if __name__ == "__main__":
